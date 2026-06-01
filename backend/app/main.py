@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from .worker import shutdown_worker, submit_job
 
 MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/tmp/uploads"))
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Consumer Sentiment AI App")
 app.add_middleware(
@@ -27,8 +29,12 @@ app.add_middleware(
 
 @app.on_event("startup")
 def on_startup() -> None:
-    Base.metadata.create_all(bind=engine)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    # Do not block Cloud Run startup on transient DB/socket issues.
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Startup DB initialization failed: %s", exc)
 
 
 @app.on_event("shutdown")
@@ -47,6 +53,11 @@ async def create_job(file: UploadFile = File(...), db: Session = Depends(get_db)
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
     if len(content) > MAX_FILE_SIZE_BYTES:
         raise HTTPException(status_code=400, detail="File size exceeds 2 MB.")
+
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Database not ready: {exc}") from exc
 
     job = Job(filename=file.filename, file_path="")
     db.add(job)
