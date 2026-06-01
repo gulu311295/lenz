@@ -78,3 +78,6 @@ steps:
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/cloud-run/sentiment-api:$COMMIT_SHA
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/cloud-run/sentiment-ui:$COMMIT_SHA
+
+options:
+  logging: CLOUD_LOGGING_ONLY
